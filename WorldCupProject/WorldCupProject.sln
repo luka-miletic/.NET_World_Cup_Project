@@ -7,6 +7,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DataAccessLayer", "DataAcce
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "WorldCupForm", "WorldCupForm\WorldCupForm.csproj", "{FFCE7FC0-BC7D-498F-96CA-B3A4742591F3}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WorldCupWPF", "WorldCupWPF\WorldCupWPF.csproj", "{18C0C709-AB5B-419B-BF8C-C0B62EB8CD56}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -21,6 +23,10 @@ Global
 		{FFCE7FC0-BC7D-498F-96CA-B3A4742591F3}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{FFCE7FC0-BC7D-498F-96CA-B3A4742591F3}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{FFCE7FC0-BC7D-498F-96CA-B3A4742591F3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{18C0C709-AB5B-419B-BF8C-C0B62EB8CD56}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{18C0C709-AB5B-419B-BF8C-C0B62EB8CD56}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{18C0C709-AB5B-419B-BF8C-C0B62EB8CD56}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{18C0C709-AB5B-419B-BF8C-C0B62EB8CD56}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

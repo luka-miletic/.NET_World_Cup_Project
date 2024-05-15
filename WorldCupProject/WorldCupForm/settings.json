@@ -1,0 +1,16 @@
+{
+  "gender": 0,
+  "data_access_mode": 0,
+  "language": 0,
+  "favourite_team": {
+    "country": "Croatia",
+    "code": "CRO",
+    "id": 15,
+    "alternate_name": null,
+    "fifa_code": "CRO",
+    "group_id": 4,
+    "group_letter": "D"
+  },
+  "favourite_players": [],
+  "window_mode": 0
+}

@@ -1,179 +1,276 @@
-﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.Data;
-using System.Drawing;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows.Forms;
-
-using static DataAccessLayer.Repositories.TeamRepository;
-using static DataAccessLayer.Repositories.MatchRepository;
-
+﻿using DataAccessLayer.Repository;
 using DataAccessLayer.Models;
+using DataAccessLayer.Settings;
+using System.Threading;
+using System.Globalization;
 
 namespace WorldCupForm
 {
     public partial class MainForm : Form
     {
-        Form cfgForm = new ConfigSelectForm();
+        private IRepository repo = RepositoryFactory.GetRepository();
+        private Settings settings = Settings.load();
 
-        private async Task InitTeamsList()
-        {
-            if (Properties.Settings.Default.DataModeSetting.Equals("API"))
-            {
-                await initTeamListFromAPI(Properties.Settings.Default.GenderSetting);
-            }
-            else
-            {
-                await initTeamListFromFile(Properties.Settings.Default.GenderSetting);
-            }
+        private Team selectedTeam = new Team();
 
-            foreach (Team t in teamList)
-            {
-                cbChooseTeam.Items.Add(t);
-            }
-
-
-            cbChooseTeam.SelectedIndex = Properties.Settings.Default.FavTeam;
-        }
-
-        private async Task InitMatchList()
-        {
-            await initMatchListFromAPI(Properties.Settings.Default.GenderSetting, teamList[Properties.Settings.Default.FavTeam]);
-        }
-
-        private async Task InitPlayerList()
-        {
-            await InitMatchList();
-
-            initPlayerList(teamList[Properties.Settings.Default.FavTeam]);
-
-            foreach (Player p in playerList)
-            {
-                PlayerSelectControl pc = new PlayerSelectControl(p);
-                flPlayers.Controls.Add(pc);
-            }
-        }
-
-        private void tsmSettingsButton_Click(object sender, EventArgs e)
-        {
-            cfgForm.ShowDialog();
-            MainForm_Load(null, EventArgs.Empty);
-            Properties.Settings.Default.FavTeam = 0;
-        }
-
-        private void tsmExitButton_Click(object sender, EventArgs e)
-        {
-            this.Close();
-        }
+        private HashSet<Player> currentTeamPlayers = new();
+        private HashSet<Player> favPlayers = new();
 
         public MainForm()
         {
             InitializeComponent();
 
+            this.SetStyle(ControlStyles.OptimizedDoubleBuffer, true);
             this.FormBorderStyle = FormBorderStyle.FixedSingle;
 
+            this.CenterToScreen();
+
+            this.MinimizeBox = false;
+            this.MaximizeBox = false;
         }
 
         private async void MainForm_Load(object sender, EventArgs e)
         {
+            InitialiseSettings();
 
-            if (Properties.Settings.Default.FirstStartup)
-            {
-                cfgForm.ShowDialog();
-            }
+            await InitialiseRepo();
 
-            cbChooseTeam.Items.Clear();
+            LoadComboBox();
 
-            await InitTeamsList();
+            this.cbTeams.SelectedItem = this.settings.favouriteTeam;
 
         }
 
-        private async void cbChooseTeam_SelectedIndexChanged(object sender, EventArgs e)
+        private async Task InitialiseRepo()
         {
-            Properties.Settings.Default.FavTeam = cbChooseTeam.SelectedIndex;
+            this.lblLoadingProgress.Text = Properties.strings.LoadingData;
+            this.lblLoadingProgress.ForeColor = Color.OrangeRed;
+            this.cbTeams.Enabled = false;
 
-            Properties.Settings.Default.Save();
+            await repo.LoadData(settings.dataAccessMode,settings.gender);
 
-            flPlayers.Controls.Clear();
+            this.lblLoadingProgress.Text = Properties.strings.DataLoaded;
+            this.lblLoadingProgress.ForeColor = Color.Green;
+            this.cbTeams.Enabled = true;
+        }
 
-            await InitPlayerList();
+        private void LoadComboBox()
+        {
+            this.cbTeams.Items.Clear();
+            this.cbTeams.Items.AddRange(repo.GetAllTeams().ToArray());
+        }
 
-            populateFl();
+        private void InitialiseSettings()
+        {
+            this.settings = Settings.load();
+            if (Settings.FirstRun()) { new SettingsForm().ShowDialog(); }
 
+            setLblTxt();
+        }
+
+        private async void settingsToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            settings.save();
+            SettingsForm sf = new SettingsForm();
+            sf.ShowDialog();
+
+            if (sf.DialogResult== DialogResult.Cancel) { return; }
+
+            InitialiseSettings();
+
+            await InitialiseRepo();
+
+            LoadComboBox();
+            this.cbTeams.SelectedIndex = -1;
+
+            this.lblFavTeamConfirm.Visible = false;
+
+            this.flpPlayers.Controls.Clear();
+            this.flpFavPlayers.Controls.Clear();
+
+            this.cbTeams.SelectedItem = this.settings.favouriteTeam;
+
+            if(this.cbTeams.SelectedItem != null ) 
+            {
+                LoadPlayerLists();
+                LoadFlowPanels();
+            }
+        }
+
+        private void cbTeams_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            this.selectedTeam = (Team)cbTeams.SelectedItem;
+
+            if(this.cbTeams.SelectedIndex == -1) 
+            {
+                lblFavTeamConfirm.Visible = false;
+                return; 
+            }
+
+            lblFavTeamConfirm.Visible = this.selectedTeam.Equals(this.settings.favouriteTeam);
+
+             LoadPlayerLists();
+             LoadFlowPanels();
+        }
+
+        void cbTeams_MouseWheel(object sender, MouseEventArgs e)
+        {
+            ((HandledMouseEventArgs)e).Handled = true;
+        }
+
+        private void btnSetFavTeam_Click(object sender, EventArgs e)
+        {
+            if (this.cbTeams.SelectedIndex == -1)
+            {
+                MessageBox.Show("Please select a team first");
+            }
+
+            this.settings.favouriteTeam = this.selectedTeam;
+            this.lblFavTeamConfirm.Visible = true;
+        }
+
+        private void MainForm_FormClosed(object sender, FormClosedEventArgs e)
+        {
+            this.settings.save();
+        }
+
+        private void LoadPlayerLists()
+        {
+            this.currentTeamPlayers.Clear();
+            this.favPlayers.Clear();
+                
+            this.currentTeamPlayers = repo.GetPlayersForCountry(this.selectedTeam.FifaCode);
+
+            foreach (Player p in this.settings.favouritePlayers)
+            {
+                if (this.currentTeamPlayers.Contains(p))
+                {
+                    this.favPlayers.Add(p);
+                }
+            }
+        }
+
+        private void LoadFlowPanels()
+        {
+            this.flpPlayers.Controls.Clear();
+            this.flpFavPlayers.Controls.Clear();
+
+            List<PlayerUserControl> playerUserControls = new();
+            List<PlayerUserControl> favPlayerUserControls= new();
+
+            foreach (Player p in this.currentTeamPlayers)
+            {
+                if(!this.favPlayers.Contains(p))
+                {
+                    playerUserControls.Add(new PlayerUserControl(p,false));
+                }
+            }
+
+            foreach (Player p in this.favPlayers)
+            {
+                favPlayerUserControls.Add(new PlayerUserControl(p,true));
+            }
+
+            playerUserControls.Sort((x,y) => x.shirtNumber.CompareTo(y.shirtNumber));
+            favPlayerUserControls.Sort((x, y) => x.shirtNumber.CompareTo(y.shirtNumber));
+
+            this.flpPlayers.Controls.AddRange(playerUserControls.ToArray());
+            this.flpFavPlayers.Controls.AddRange(favPlayerUserControls.ToArray());
+        }
+
+
+        //DRAG-DROP
+        private void flpFavPlayers_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effect = DragDropEffects.Copy;
+        }
+
+        private void flpFavPlayers_DragDrop(object sender, DragEventArgs e)
+        {
+            Player p = (Player)e.Data.GetData(typeof(Player));
+
+            if (this.flpFavPlayers.Controls.Count >= 3)
+            {
+                MessageBox.Show("Only 3 favourite players allowed per team!");
+                return;
+            }
+
+            if (((FlowLayoutPanel)sender).Controls.ContainsKey(p.Name))
+            {
+                return;
+            }
+
+            this.settings.favouritePlayers.Add(p);
+
+            LoadPlayerLists();
+            LoadFlowPanels();
+        }
+
+        private void flpPlayers_DragEnter(object sender, DragEventArgs e)
+        {
+            e.Effect = DragDropEffects.Copy;
+        }
+
+        private void flpPlayers_DragDrop(object sender, DragEventArgs e)
+        {
+            Player p = (Player)e.Data.GetData(typeof(Player));
+
+            if ( ((FlowLayoutPanel)sender).Controls.ContainsKey(p.Name) )
+            {
+                return;
+            }
+
+            settings.favouritePlayers.Remove(p);
+
+            LoadPlayerLists();
+            LoadFlowPanels();
         }
 
         private void MainForm_FormClosing(object sender, FormClosingEventArgs e)
         {
-            if (MessageBox.Show("Are you sure you want to exit?", "My Application", MessageBoxButtons.OKCancel) == DialogResult.Cancel)
+            DialogResult dr = MessageBox.Show("Are you sure?", "Confirm", MessageBoxButtons.OKCancel);
+
+            if (dr == DialogResult.Cancel)
             {
                 e.Cancel = true;
             }
         }
 
-        private void flPlayers_DragDrop(object sender, DragEventArgs e)
+        private void rankingToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            
-            if (((Control)sender).Name.Equals("flPlayers2") && ((Control)sender).Controls.Count >= 3)
+            if( this.cbTeams.SelectedIndex == -1)
             {
+                MessageBox.Show("Please select a team first");
                 return;
             }
 
-            ((Control)sender).Controls.Add((PlayerSelectControl)e.Data.GetData(typeof(PlayerSelectControl)));
+            new RankingsForm((Team)this.selectedTeam).ShowDialog();
 
-            if (((Control)sender).Name.Equals("flPlayers2"))
-            {
-                addFavPlayer(((PlayerSelectControl)e.Data.GetData(typeof(PlayerSelectControl))).mPlayer);
-            }
 
-            if (((Control)sender).Name.Equals("flPlayers"))
-            {
-                removeFavPlayer(((PlayerSelectControl)e.Data.GetData(typeof(PlayerSelectControl))).mPlayer);
-            }
-
-            ((PlayerSelectControl)e.Data.GetData(typeof(PlayerSelectControl))).setImg();
-            
-        }
-        
-        private void addFavPlayer(Player player)
-        {
-            Properties.Settings.Default.FavPlayers = Properties.Settings.Default.FavPlayers + $"{player.Name};";
-            Properties.Settings.Default.Save();
         }
 
-        private void removeFavPlayer(Player player)
+        private void setLblTxt()
         {
-            int i = Properties.Settings.Default.FavPlayers.IndexOf(player.Name);
-            int len = player.Name.Length + 1;
-
-            try
+            if (this.settings.language == Language.CRO)
             {
-                Properties.Settings.Default.FavPlayers = Properties.Settings.Default.FavPlayers.Remove(i, len);
-                Properties.Settings.Default.Save();
+                Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo("hr-HR");
             }
-            catch { MessageBox.Show("Player Already in layout!"); }
-        }
-
-        private void populateFl()
-        {
-            flPlayers2.Controls.Clear();
-
-            foreach(Player player in playerList)
+            else
             {
-                if (Properties.Settings.Default.FavPlayers.Contains(player.Name))
-                {
-                    PlayerSelectControl pc = new PlayerSelectControl(player);
-                    flPlayers2.Controls.Add(pc);
-                    flPlayers.Controls.Remove(pc);
-                }
+                Thread.CurrentThread.CurrentUICulture = CultureInfo.GetCultureInfo("en-US");
             }
-        }
 
-        private void flPlayers_DragEnter(object sender, DragEventArgs e)
-        {
-            e.Effect = DragDropEffects.Move;
+            this.lblTeams.Text = Properties.strings.SelectTeam;
+            this.lblFavTeamConfirm.Text = Properties.strings.FavouriteTeam;
+            this.lblLoadingProgress.Text = Properties.strings.LoadingData;
+            this.btnSetFavTeam.Text = Properties.strings.SetTeamAsFav;
+            this.lblPlayers.Text = Properties.strings.Players;
+            this.lblFavouriteTeams.Text = Properties.strings.FavouritePlayers;
+
+            this.editToolStripMenuItem.Text = Properties.strings.Edit;
+            this.settingsToolStripMenuItem.Text = Properties.strings.Settings;
+
+            this.rankingToolStripMenuItem.Text = Properties.strings.RankingLists;
         }
     }
 }
